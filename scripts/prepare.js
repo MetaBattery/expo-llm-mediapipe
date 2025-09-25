@@ -32,8 +32,17 @@ function runCommand(command, args, options = {}) {
 }
 
 function runNpmExec(args, options = {}) {
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  return runCommand(npmCommand, ['exec', ...args], options);
+  if (process.platform === 'win32') {
+    const npmCliPath = process.env.npm_execpath;
+
+    if (!npmCliPath) {
+      throw new Error('The npm_execpath environment variable is not defined.');
+    }
+
+    return runCommand(process.execPath, [npmCliPath, 'exec', ...args], options);
+  }
+
+  return runCommand('npm', ['exec', ...args], options);
 }
 
 if (process.platform !== 'win32') {

@@ -18,8 +18,8 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
   
   # MediaPipe LLM dependencies - need both
-  s.dependency 'MediaPipeTasksGenAI' 
-  s.dependency 'MediaPipeTasksGenAIC'
+  s.dependency 'MediaPipeTasksGenAI', '>= 0.10.24'
+  s.dependency 'MediaPipeTasksGenAIC', '>= 0.10.24'
   
   s.source_files = "*.{swift}"
 end

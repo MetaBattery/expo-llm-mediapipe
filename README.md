@@ -73,6 +73,10 @@ const run = async () => {
 - **iOS**: 14+
 - **Android**: SDK 24+
 
+## Windows support
+
+The package's install hook no longer depends on Bash utilities. The new `prepare` script is implemented in Node.js, which means `npm install` / `npx expo install expo-llm-mediapipe` now completes successfully on Windows. Make sure a recent Node.js LTS release (16 or newer) is available so the script can clean generated build artifacts, sync the default templates from `expo-module-scripts`, and compile the TypeScript sources with `npx tsc`.
+
 ## Demo
 
 https://github.com/user-attachments/assets/e6073287-59c7-4ead-92ba-2ae98c3ffa97

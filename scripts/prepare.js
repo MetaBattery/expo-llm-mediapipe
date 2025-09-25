@@ -5,7 +5,14 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = process.cwd();
-const env = { ...process.env, EXPO_NONINTERACTIVE: '1' };
+const userAgent = process.env.npm_config_user_agent;
+const env = {
+  ...process.env,
+  EXPO_NONINTERACTIVE: '1',
+  npm_config_user_agent: userAgent?.includes('yarn')
+    ? userAgent
+    : ['yarn', userAgent].filter(Boolean).join(' '),
+};
 
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -24,8 +31,13 @@ function runCommand(command, args, options = {}) {
   }
 }
 
+function runNpmExec(args, options = {}) {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  return runCommand(npmCommand, ['exec', ...args], options);
+}
+
 if (process.platform !== 'win32') {
-  runCommand('npx', ['expo-module', 'prepare']);
+  runNpmExec(['expo-module', 'prepare']);
   process.exit(0);
 }
 
@@ -89,7 +101,7 @@ removeBuildFolder('build');
   removeBuildFolder(path.join(folder, 'build'));
 });
 
-runCommand('npx', ['expo-module', 'readme']);
+runNpmExec(['expo-module', 'readme']);
 
 const templateRoot = path.join(projectRoot, 'node_modules', 'expo-module-scripts', 'templates');
 const optionalTemplates = new Set(['scripts/with-node.sh']);
@@ -101,11 +113,11 @@ if (fs.existsSync(templateRoot)) {
   });
 }
 
-runCommand('npx', ['tsc', '--project', 'tsconfig.json']);
+runNpmExec(['tsc', '--project', 'tsconfig.json']);
 
 ['plugin', 'cli', 'utils', 'scripts'].forEach((folder) => {
   const tsconfigPath = path.join(folder, 'tsconfig.json');
   if (fs.existsSync(path.join(projectRoot, tsconfigPath))) {
-    runCommand('npx', ['tsc', '--project', tsconfigPath]);
+    runNpmExec(['tsc', '--project', tsconfigPath]);
   }
 });

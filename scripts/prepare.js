@@ -39,10 +39,10 @@ function runNpmExec(args, options = {}) {
       throw new Error('The npm_execpath environment variable is not defined.');
     }
 
-    return runCommand(process.execPath, [npmCliPath, 'exec', ...args], options);
+    return runCommand(process.execPath, [npmCliPath, 'exec', '--', ...args], options);
   }
 
-  return runCommand('npm', ['exec', ...args], options);
+  return runCommand('npm', ['exec', '--', ...args], options);
 }
 
 if (process.platform !== 'win32') {

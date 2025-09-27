@@ -132,6 +132,23 @@ export class ModelManager {
         modelName,
         downloadOptions,
       );
+      if (result) {
+        try {
+          const isDownloaded = await ExpoLlmMediapipe.isModelDownloaded(modelName);
+          if (isDownloaded) {
+            model.status = "downloaded";
+            model.progress = 1;
+            model.error = undefined;
+            this.models.set(modelName, model);
+            this.notifyListeners();
+          }
+        } catch (statusCheckError) {
+          console.warn(
+            `Unable to verify download status for ${modelName}:`,
+            statusCheckError,
+          );
+        }
+      }
       return result;
     } catch (error) {
       // Update status to error

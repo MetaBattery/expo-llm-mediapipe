@@ -55,3 +55,6 @@ yarn-error.log
 
 # Expo
 .expo/*
+
+# Ignore Gradle wrapper binaries
+example/android/gradle/wrapper/gradle-wrapper.jar

@@ -12,6 +12,7 @@ import java.net.URL
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.BufferedInputStream
+import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "ExpoLlmMediapipe"
 private const val DOWNLOAD_DIRECTORY = "llm_models"
@@ -369,6 +370,8 @@ class ExpoLlmMediapipeModule : Module() {
       }
       
       // Start download in coroutine
+      val promiseSettled = AtomicBoolean(false)
+
       val downloadJob = CoroutineScope(Dispatchers.IO).launch {
         try {
           val connection = URL(url).openConnection() as HttpURLConnection
@@ -404,6 +407,14 @@ class ExpoLlmMediapipeModule : Module() {
                 "url" to url,
                 "status" to "cancelled"
               ))
+              if (promiseSettled.compareAndSet(false, true)) {
+                withContext(Dispatchers.Main) {
+                  promise.reject(
+                    "ERR_DOWNLOAD_CANCELLED",
+                    "Download was cancelled"
+                  )
+                }
+              }
               return@launch
             }
             
@@ -446,9 +457,11 @@ class ExpoLlmMediapipeModule : Module() {
             "progress" to 1.0,
             "status" to "completed"
           ))
-          
+
           withContext(Dispatchers.Main) {
-            promise.resolve(true)
+            if (promiseSettled.compareAndSet(false, true)) {
+              promise.resolve(true)
+            }
           }
         } catch (e: Exception) {
           Log.e(TAG, "Error downloading model: ${e.message}", e)
@@ -459,14 +472,24 @@ class ExpoLlmMediapipeModule : Module() {
             "error" to (e.message ?: "Unknown error")
           ))
           withContext(Dispatchers.Main) {
-            promise.reject("ERR_DOWNLOAD", "Failed to download model: ${e.message}", e)
+            if (promiseSettled.compareAndSet(false, true)) {
+              promise.reject("ERR_DOWNLOAD", "Failed to download model: ${e.message}", e)
+            }
           }
         } finally {
           activeDownloads.remove(modelName)
         }
       }
-      
+
       activeDownloads[modelName] = downloadJob
+
+      downloadJob.invokeOnCompletion { cause ->
+        if (cause is CancellationException && promiseSettled.compareAndSet(false, true)) {
+          CoroutineScope(Dispatchers.Main).launch {
+            promise.reject("ERR_DOWNLOAD_CANCELLED", "Download was cancelled", cause)
+          }
+        }
+      }
     }
     
     // Cancel download

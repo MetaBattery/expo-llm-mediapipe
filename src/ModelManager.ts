@@ -151,6 +151,22 @@ export class ModelManager {
       }
       return result;
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const errorCode = (error as { code?: string | undefined })?.code;
+      const isCancelled =
+        errorCode === "ERR_DOWNLOAD_CANCELLED" ||
+        errorMessage.toLowerCase().includes("cancelled");
+
+      if (isCancelled) {
+        model.status = "not_downloaded";
+        model.progress = 0;
+        model.error = undefined;
+        this.models.set(modelName, model);
+        this.notifyListeners();
+        return false;
+      }
+
       // Update status to error
       model.status = "error";
       // model.error = error.message;

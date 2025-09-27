@@ -53,8 +53,14 @@ export class ModelManager {
         model.progress = progress;
       }
 
-      if (error) {
-        model.error = error;
+      if (status === "error") {
+        model.error = error ?? model.error;
+      } else if (
+        status === "downloading" ||
+        status === "completed" ||
+        status === "cancelled"
+      ) {
+        model.error = undefined;
       }
 
       // Save updated model info

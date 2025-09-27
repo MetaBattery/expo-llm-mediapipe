@@ -158,10 +158,22 @@ function useDownloadableLLM(
         return result;
       } catch (error) {
         console.error(`Error initiating download for ${modelName}:`, error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        const errorCode = (error as { code?: string | undefined })?.code;
+        const isCancelled =
+          errorCode === "ERR_DOWNLOAD_CANCELLED" ||
+          errorMessage.toLowerCase().includes("cancelled");
+
+        if (isCancelled) {
+          setDownloadStatus("not_downloaded");
+          setDownloadProgress(0);
+          setDownloadError(null);
+          return false;
+        }
+
         setDownloadStatus("error");
-        setDownloadError(
-          error instanceof Error ? error.message : String(error),
-        );
+        setDownloadError(errorMessage);
         throw error;
       }
     },

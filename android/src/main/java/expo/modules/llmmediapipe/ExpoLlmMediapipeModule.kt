@@ -220,12 +220,25 @@ class ExpoLlmMediapipeModule : Module() {
 
     AsyncFunction("releaseModel") { handle: Int, promise: Promise ->
       try {
-        val removed = modelMap.remove(handle) != null
-        if (removed) {
-          promise.resolve(true)
-        } else {
+        val model = modelMap[handle]
+        if (model == null) {
           promise.reject("INVALID_HANDLE", "No model found for handle $handle", null)
+          return@AsyncFunction
         }
+
+        try {
+          model.close()
+        } catch (e: Exception) {
+          sendEvent("logging", mapOf(
+            "handle" to handle,
+            "message" to "Failed to close model: ${e.message}"
+          ))
+          promise.reject("RELEASE_FAILED", e.message ?: "Unknown error", e)
+          return@AsyncFunction
+        }
+
+        modelMap.remove(handle)
+        promise.resolve(true)
       } catch (e: Exception) {
         promise.reject("RELEASE_FAILED", e.message ?: "Unknown error", e)
       }

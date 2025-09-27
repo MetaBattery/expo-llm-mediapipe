@@ -141,6 +141,20 @@ function useDownloadableLLM(
         setDownloadProgress(0);
         setDownloadError(null);
         const result = await module.downloadModel(modelUrl, modelName, options);
+        if (result) {
+          try {
+            const isDownloaded = await module.isModelDownloaded(modelName);
+            if (isDownloaded) {
+              setDownloadStatus("downloaded");
+              setDownloadProgress(1);
+            }
+          } catch (statusCheckError) {
+            console.warn(
+              `Unable to verify download status for ${modelName}:`,
+              statusCheckError,
+            );
+          }
+        }
         return result;
       } catch (error) {
         console.error(`Error initiating download for ${modelName}:`, error);

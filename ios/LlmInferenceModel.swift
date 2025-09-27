@@ -65,16 +65,24 @@ class LlmInferenceModel {
     }
   }
 
-  private func createSession() throws {
-    // Based on the sample code, we create a session without additional options
+  @discardableResult
+  private func createSession() throws -> LlmInference.Session {
     do {
-      session = try LlmInference.Session(llmInference: inference)
-      
+      let sessionOptions = LlmInference.SessionOptions()
+      sessionOptions.temperature = temperature
+      sessionOptions.topK = topK
+      sessionOptions.randomSeed = randomSeed
+
+      let newSession = try LlmInference.Session(llmInference: inference, options: sessionOptions)
+      session = newSession
+
       // Log success
       self.eventEmitter("logging", [
         "handle": modelHandle,
         "message": "Session created successfully"
       ])
+
+      return newSession
     } catch {
       throw LlmError.sessionError("Failed to create LLM session: \(error.localizedDescription)")
     }
@@ -91,19 +99,17 @@ class LlmInferenceModel {
   }
   
   func generateResponse(requestId: Int, prompt: String, completion: @escaping (Result<String, Error>) -> Void) throws {
-    guard let session = session else {
-      throw LlmError.sessionError("Session not initialized")
-    }
-    
+    let session = try createSession()
+
     self.currentResponse = ""
-    
+
     // Log generation start
     self.eventEmitter("logging", [
       "handle": modelHandle,
       "requestId": requestId,
       "message": "Starting generation for prompt: \(String(prompt.prefix(30)))..."
     ])
-    
+
     Task {
       do {
         let formattedPrompt = formatPrompt(text: prompt)
@@ -149,19 +155,17 @@ class LlmInferenceModel {
   }
   
   func generateStreamingResponse(requestId: Int, prompt: String, completion: @escaping (Bool) -> Void) throws {
-    guard let session = session else {
-      throw LlmError.sessionError("Session not initialized")
-    }
-    
+    let session = try createSession()
+
     self.currentResponse = ""
-    
+
     // Log generation start
     self.eventEmitter("logging", [
       "handle": modelHandle,
       "requestId": requestId,
       "message": "Starting streaming generation for prompt: \(String(prompt.prefix(30)))..."
     ])
-    
+
     Task {
       do {
         let formattedPrompt = formatPrompt(text: prompt)

@@ -23,16 +23,36 @@ export function useLLM(props: UseLLMAssetProps): BaseLlmReturn;
 export function useLLM(props: UseLLMFileProps): BaseLlmReturn;
 
 // Dispatcher Implementation
-export function useLLM(props: UseLLMProps): BaseLlmReturn | DownloadableLlmReturn {
-  if ('modelUrl' in props && props.modelUrl !== undefined) {
-    return _useLLMDownloadable(props as UseLLMDownloadableProps);
-  } else {
-    return _useLLMBase(props as UseLLMAssetProps | UseLLMFileProps);
+export function useLLM(
+  props: UseLLMProps,
+): BaseLlmReturn | DownloadableLlmReturn {
+  const modeRef = React.useRef<"downloadable" | "base">();
+  const isDownloadable = "modelUrl" in props && props.modelUrl !== undefined;
+
+  if (modeRef.current == null) {
+    modeRef.current = isDownloadable ? "downloadable" : "base";
+  } else if (modeRef.current === "downloadable" && !isDownloadable) {
+    throw new Error(
+      "useLLM was initialized with downloadable props but is now receiving non-downloadable props.",
+    );
+  } else if (modeRef.current === "base" && isDownloadable) {
+    throw new Error(
+      "useLLM was initialized with non-downloadable props but is now receiving downloadable props.",
+    );
   }
+
+  if (modeRef.current === "downloadable") {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- the selected branch is fixed after the first render
+    return useDownloadableLLM(props as UseLLMDownloadableProps);
+  }
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- the selected branch is fixed after the first render
+  return useBaseLLM(props as UseLLMAssetProps | UseLLMFileProps);
 }
 
 // Internal implementation for Downloadable models
-function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmReturn {
+function useDownloadableLLM(
+  props: UseLLMDownloadableProps,
+): DownloadableLlmReturn {
   const [modelHandle, setModelHandle] = React.useState<number | undefined>();
   const nextRequestIdRef = React.useRef(0);
 
@@ -43,7 +63,8 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
   const [downloadError, setDownloadError] = React.useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = React.useState(true);
 
-  const { modelUrl, modelName, maxTokens, topK, temperature, randomSeed } = props;
+  const { modelUrl, modelName, maxTokens, topK, temperature, randomSeed } =
+    props;
 
   React.useEffect(() => {
     const checkModelStatus = async () => {
@@ -51,10 +72,13 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
       try {
         const isDownloaded = await module.isModelDownloaded(modelName);
         setDownloadStatus(isDownloaded ? "downloaded" : "not_downloaded");
-        if (isDownloaded) setDownloadProgress(1); else setDownloadProgress(0);
+        if (isDownloaded) setDownloadProgress(1);
+        else setDownloadProgress(0);
       } catch (error) {
         console.error(`Error checking model status for ${modelName}:`, error);
-        setDownloadError(error instanceof Error ? error.message : String(error));
+        setDownloadError(
+          error instanceof Error ? error.message : String(error),
+        );
         setDownloadStatus("error");
       } finally {
         setIsCheckingStatus(false);
@@ -92,10 +116,20 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
     const currentModelHandle = modelHandle;
     return () => {
       if (currentModelHandle !== undefined) {
-        console.log(`Releasing downloadable model with handle ${currentModelHandle}.`);
-        module.releaseModel(currentModelHandle)
-          .then(() => console.log(`Successfully released model ${currentModelHandle}`))
-          .catch((error) => console.error(`Error releasing model ${currentModelHandle}:`, error));
+        console.log(
+          `Releasing downloadable model with handle ${currentModelHandle}.`,
+        );
+        module
+          .releaseModel(currentModelHandle)
+          .then(() =>
+            console.log(`Successfully released model ${currentModelHandle}`),
+          )
+          .catch((error) =>
+            console.error(
+              `Error releasing model ${currentModelHandle}:`,
+              error,
+            ),
+          );
       }
     };
   }, [modelHandle]);
@@ -111,7 +145,9 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
       } catch (error) {
         console.error(`Error initiating download for ${modelName}:`, error);
         setDownloadStatus("error");
-        setDownloadError(error instanceof Error ? error.message : String(error));
+        setDownloadError(
+          error instanceof Error ? error.message : String(error),
+        );
         throw error;
       }
     },
@@ -124,7 +160,9 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
       return;
     }
     if (downloadStatus !== "downloaded") {
-      throw new Error(`Model ${modelName} is not downloaded. Call downloadModel() first.`);
+      throw new Error(
+        `Model ${modelName} is not downloaded. Call downloadModel() first.`,
+      );
     }
     try {
       console.log(`Attempting to load downloaded model: ${modelName}`);
@@ -135,14 +173,24 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
         temperature ?? 0.8,
         randomSeed ?? 0,
       );
-      console.log(`Loaded downloaded model '${modelName}' with handle ${handle}`);
+      console.log(
+        `Loaded downloaded model '${modelName}' with handle ${handle}`,
+      );
       setModelHandle(handle);
     } catch (error) {
       console.error(`Error loading downloaded model '${modelName}':`, error);
       setModelHandle(undefined);
       throw error;
     }
-  }, [modelHandle, downloadStatus, modelName, maxTokens, topK, temperature, randomSeed]);
+  }, [
+    modelHandle,
+    downloadStatus,
+    modelName,
+    maxTokens,
+    topK,
+    temperature,
+    randomSeed,
+  ]);
 
   const generateResponse = React.useCallback(
     async (
@@ -156,19 +204,39 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
       }
       const requestId = nextRequestIdRef.current++;
 
-      const partialSub = module.addListener("onPartialResponse", (ev: PartialResponseEventPayload) => {
-        if (onPartial && requestId === ev.requestId && ev.handle === modelHandle && !(abortSignal?.aborted ?? false)) {
-          onPartial(ev.response, ev.requestId);
-        }
-      });
-      const errorSub = module.addListener("onErrorResponse", (ev: ErrorResponseEventPayload) => {
-        if (onErrorCb && requestId === ev.requestId && ev.handle === modelHandle && !(abortSignal?.aborted ?? false)) {
-          onErrorCb(ev.error, ev.requestId);
-        }
-      });
+      const partialSub = module.addListener(
+        "onPartialResponse",
+        (ev: PartialResponseEventPayload) => {
+          if (
+            onPartial &&
+            requestId === ev.requestId &&
+            ev.handle === modelHandle &&
+            !(abortSignal?.aborted ?? false)
+          ) {
+            onPartial(ev.response, ev.requestId);
+          }
+        },
+      );
+      const errorSub = module.addListener(
+        "onErrorResponse",
+        (ev: ErrorResponseEventPayload) => {
+          if (
+            onErrorCb &&
+            requestId === ev.requestId &&
+            ev.handle === modelHandle &&
+            !(abortSignal?.aborted ?? false)
+          ) {
+            onErrorCb(ev.error, ev.requestId);
+          }
+        },
+      );
 
       try {
-        return await module.generateResponse(modelHandle, requestId, promptText);
+        return await module.generateResponse(
+          modelHandle,
+          requestId,
+          promptText,
+        );
       } catch (e) {
         console.error("Generate response error:", e);
         if (onErrorCb && !(abortSignal?.aborted ?? false)) {
@@ -180,7 +248,7 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
         errorSub.remove();
       }
     },
-    [modelHandle]
+    [modelHandle],
   );
 
   const generateStreamingResponse = React.useCallback(
@@ -196,22 +264,36 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
       const requestId = nextRequestIdRef.current++;
 
       return new Promise<void>((resolve, reject) => {
-        const partialSubscription = module.addListener("onPartialResponse", (ev: PartialResponseEventPayload) => {
-          if (ev.handle === modelHandle && ev.requestId === requestId && !(abortSignal?.aborted ?? false)) {
-            if (onPartial) onPartial(ev.response, ev.requestId);
-          }
-        });
-        const errorSubscription = module.addListener("onErrorResponse", (ev: ErrorResponseEventPayload) => {
-          if (ev.handle === modelHandle && ev.requestId === requestId && !(abortSignal?.aborted ?? false)) {
-            if (onErrorCb) onErrorCb(ev.error, ev.requestId);
-            errorSubscription.remove();
-            partialSubscription.remove();
-            reject(new Error(ev.error));
-          }
-        });
+        const partialSubscription = module.addListener(
+          "onPartialResponse",
+          (ev: PartialResponseEventPayload) => {
+            if (
+              ev.handle === modelHandle &&
+              ev.requestId === requestId &&
+              !(abortSignal?.aborted ?? false)
+            ) {
+              if (onPartial) onPartial(ev.response, ev.requestId);
+            }
+          },
+        );
+        const errorSubscription = module.addListener(
+          "onErrorResponse",
+          (ev: ErrorResponseEventPayload) => {
+            if (
+              ev.handle === modelHandle &&
+              ev.requestId === requestId &&
+              !(abortSignal?.aborted ?? false)
+            ) {
+              if (onErrorCb) onErrorCb(ev.error, ev.requestId);
+              errorSubscription.remove();
+              partialSubscription.remove();
+              reject(new Error(ev.error));
+            }
+          },
+        );
 
         if (abortSignal) {
-          abortSignal.addEventListener('abort', () => {
+          abortSignal.addEventListener("abort", () => {
             errorSubscription.remove();
             partialSubscription.remove();
             console.log(`Request ${requestId} aborted for downloadable model.`);
@@ -219,7 +301,8 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
           });
         }
 
-        module.generateResponseAsync(modelHandle, requestId, promptText)
+        module
+          .generateResponseAsync(modelHandle, requestId, promptText)
           .then(() => {
             if (!(abortSignal?.aborted ?? false)) {
               errorSubscription.remove();
@@ -232,34 +315,47 @@ function _useLLMDownloadable(props: UseLLMDownloadableProps): DownloadableLlmRet
               errorSubscription.remove();
               partialSubscription.remove();
               if (onErrorCb) {
-                onErrorCb(error instanceof Error ? error.message : String(error), requestId);
+                onErrorCb(
+                  error instanceof Error ? error.message : String(error),
+                  requestId,
+                );
               }
               reject(error);
             }
           });
       });
     },
-    [modelHandle]
+    [modelHandle],
   );
 
-  return React.useMemo(() => ({
-    generateResponse,
-    generateStreamingResponse,
-    isLoaded: modelHandle !== undefined,
-    downloadModel: downloadModelHandler,
-    loadModel: loadModelHandler,
-    downloadStatus,
-    downloadProgress,
-    downloadError,
-    isCheckingStatus,
-  }), [
-    generateResponse, generateStreamingResponse, modelHandle,
-    downloadModelHandler, loadModelHandler, downloadStatus, downloadProgress, downloadError, isCheckingStatus,
-  ]);
+  return React.useMemo(
+    () => ({
+      generateResponse,
+      generateStreamingResponse,
+      isLoaded: modelHandle !== undefined,
+      downloadModel: downloadModelHandler,
+      loadModel: loadModelHandler,
+      downloadStatus,
+      downloadProgress,
+      downloadError,
+      isCheckingStatus,
+    }),
+    [
+      generateResponse,
+      generateStreamingResponse,
+      modelHandle,
+      downloadModelHandler,
+      loadModelHandler,
+      downloadStatus,
+      downloadProgress,
+      downloadError,
+      isCheckingStatus,
+    ],
+  );
 }
 
 // Internal implementation for Asset/File models
-function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
+function useBaseLLM(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
   const [modelHandle, setModelHandle] = React.useState<number | undefined>();
   const nextRequestIdRef = React.useRef(0);
 
@@ -267,10 +363,10 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
   let modelIdentifier: string | undefined;
   let storageType: "asset" | "file" | undefined;
 
-  if (props.storageType === 'asset') {
+  if (props.storageType === "asset") {
     modelIdentifier = props.modelName;
     storageType = props.storageType;
-  } else if (props.storageType === 'file') {
+  } else if (props.storageType === "file") {
     modelIdentifier = props.modelPath;
     storageType = props.storageType;
   }
@@ -283,27 +379,53 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
 
     const currentConfigStorageKey = modelIdentifier;
     const currentStorageType = storageType;
-    
-    console.log(`Attempting to create non-downloadable model: ${currentConfigStorageKey}, type: ${currentStorageType}`);
-    
+
+    console.log(
+      `Attempting to create non-downloadable model: ${currentConfigStorageKey}, type: ${currentStorageType}`,
+    );
+
     let active = true;
     const modelCreatePromise =
       currentStorageType === "asset"
-        ? module.createModelFromAsset(currentConfigStorageKey, maxTokens ?? 512, topK ?? 40, temperature ?? 0.8, randomSeed ?? 0)
-        : module.createModel(currentConfigStorageKey, maxTokens ?? 512, topK ?? 40, temperature ?? 0.8, randomSeed ?? 0);
+        ? module.createModelFromAsset(
+            currentConfigStorageKey,
+            maxTokens ?? 512,
+            topK ?? 40,
+            temperature ?? 0.8,
+            randomSeed ?? 0,
+          )
+        : module.createModel(
+            currentConfigStorageKey,
+            maxTokens ?? 512,
+            topK ?? 40,
+            temperature ?? 0.8,
+            randomSeed ?? 0,
+          );
 
     modelCreatePromise
       .then((handle: number) => {
         if (active) {
-          console.log(`Created non-downloadable model with handle ${handle} for ${currentConfigStorageKey}`);
+          console.log(
+            `Created non-downloadable model with handle ${handle} for ${currentConfigStorageKey}`,
+          );
           setModelHandle(handle);
         } else {
-          module.releaseModel(handle).catch(e => console.error("Error releasing model from stale promise (non-downloadable)", e));
+          module
+            .releaseModel(handle)
+            .catch((e) =>
+              console.error(
+                "Error releasing model from stale promise (non-downloadable)",
+                e,
+              ),
+            );
         }
       })
       .catch((error: Error) => {
         if (active) {
-          console.error(`createModel error for ${currentConfigStorageKey} (non-downloadable):`, error);
+          console.error(
+            `createModel error for ${currentConfigStorageKey} (non-downloadable):`,
+            error,
+          );
           setModelHandle(undefined);
         }
       });
@@ -318,9 +440,17 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
     return () => {
       if (currentModelHandle !== undefined) {
         console.log(`Releasing base model with handle ${currentModelHandle}.`);
-        module.releaseModel(currentModelHandle)
-          .then(() => console.log(`Successfully released model ${currentModelHandle}`))
-          .catch((error) => console.error(`Error releasing model ${currentModelHandle}:`, error));
+        module
+          .releaseModel(currentModelHandle)
+          .then(() =>
+            console.log(`Successfully released model ${currentModelHandle}`),
+          )
+          .catch((error) =>
+            console.error(
+              `Error releasing model ${currentModelHandle}:`,
+              error,
+            ),
+          );
       }
     };
   }, [modelHandle]);
@@ -333,23 +463,45 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
       abortSignal?: AbortSignal,
     ): Promise<string> => {
       if (modelHandle === undefined) {
-        throw new Error("Model handle is not defined. Ensure model is created/loaded.");
+        throw new Error(
+          "Model handle is not defined. Ensure model is created/loaded.",
+        );
       }
       const requestId = nextRequestIdRef.current++;
 
-      const partialSub = module.addListener("onPartialResponse", (ev: PartialResponseEventPayload) => {
-        if (onPartial && requestId === ev.requestId && ev.handle === modelHandle && !(abortSignal?.aborted ?? false)) {
-          onPartial(ev.response, ev.requestId);
-        }
-      });
-      const errorSub = module.addListener("onErrorResponse", (ev: ErrorResponseEventPayload) => {
-        if (onErrorCb && requestId === ev.requestId && ev.handle === modelHandle && !(abortSignal?.aborted ?? false)) {
-          onErrorCb(ev.error, ev.requestId);
-        }
-      });
+      const partialSub = module.addListener(
+        "onPartialResponse",
+        (ev: PartialResponseEventPayload) => {
+          if (
+            onPartial &&
+            requestId === ev.requestId &&
+            ev.handle === modelHandle &&
+            !(abortSignal?.aborted ?? false)
+          ) {
+            onPartial(ev.response, ev.requestId);
+          }
+        },
+      );
+      const errorSub = module.addListener(
+        "onErrorResponse",
+        (ev: ErrorResponseEventPayload) => {
+          if (
+            onErrorCb &&
+            requestId === ev.requestId &&
+            ev.handle === modelHandle &&
+            !(abortSignal?.aborted ?? false)
+          ) {
+            onErrorCb(ev.error, ev.requestId);
+          }
+        },
+      );
 
       try {
-        return await module.generateResponse(modelHandle, requestId, promptText);
+        return await module.generateResponse(
+          modelHandle,
+          requestId,
+          promptText,
+        );
       } catch (e) {
         console.error("Generate response error:", e);
         if (onErrorCb && !(abortSignal?.aborted ?? false)) {
@@ -361,7 +513,7 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
         errorSub.remove();
       }
     },
-    [modelHandle]
+    [modelHandle],
   );
 
   const generateStreamingResponse = React.useCallback(
@@ -372,27 +524,43 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
       abortSignal?: AbortSignal,
     ): Promise<void> => {
       if (modelHandle === undefined) {
-        throw new Error("Model handle is not defined. Ensure model is created/loaded.");
+        throw new Error(
+          "Model handle is not defined. Ensure model is created/loaded.",
+        );
       }
       const requestId = nextRequestIdRef.current++;
 
       return new Promise<void>((resolve, reject) => {
-        const partialSubscription = module.addListener("onPartialResponse", (ev: PartialResponseEventPayload) => {
-          if (ev.handle === modelHandle && ev.requestId === requestId && !(abortSignal?.aborted ?? false)) {
-            if (onPartial) onPartial(ev.response, ev.requestId);
-          }
-        });
-        const errorSubscription = module.addListener("onErrorResponse", (ev: ErrorResponseEventPayload) => {
-          if (ev.handle === modelHandle && ev.requestId === requestId && !(abortSignal?.aborted ?? false)) {
-            if (onErrorCb) onErrorCb(ev.error, ev.requestId);
-            errorSubscription.remove();
-            partialSubscription.remove();
-            reject(new Error(ev.error));
-          }
-        });
+        const partialSubscription = module.addListener(
+          "onPartialResponse",
+          (ev: PartialResponseEventPayload) => {
+            if (
+              ev.handle === modelHandle &&
+              ev.requestId === requestId &&
+              !(abortSignal?.aborted ?? false)
+            ) {
+              if (onPartial) onPartial(ev.response, ev.requestId);
+            }
+          },
+        );
+        const errorSubscription = module.addListener(
+          "onErrorResponse",
+          (ev: ErrorResponseEventPayload) => {
+            if (
+              ev.handle === modelHandle &&
+              ev.requestId === requestId &&
+              !(abortSignal?.aborted ?? false)
+            ) {
+              if (onErrorCb) onErrorCb(ev.error, ev.requestId);
+              errorSubscription.remove();
+              partialSubscription.remove();
+              reject(new Error(ev.error));
+            }
+          },
+        );
 
         if (abortSignal) {
-          abortSignal.addEventListener('abort', () => {
+          abortSignal.addEventListener("abort", () => {
             errorSubscription.remove();
             partialSubscription.remove();
             console.log(`Request ${requestId} aborted for base model.`);
@@ -400,7 +568,8 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
           });
         }
 
-        module.generateResponseAsync(modelHandle, requestId, promptText)
+        module
+          .generateResponseAsync(modelHandle, requestId, promptText)
           .then(() => {
             if (!(abortSignal?.aborted ?? false)) {
               errorSubscription.remove();
@@ -413,23 +582,28 @@ function _useLLMBase(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
               errorSubscription.remove();
               partialSubscription.remove();
               if (onErrorCb) {
-                onErrorCb(error instanceof Error ? error.message : String(error), requestId);
+                onErrorCb(
+                  error instanceof Error ? error.message : String(error),
+                  requestId,
+                );
               }
               reject(error);
             }
           });
       });
     },
-    [modelHandle]
+    [modelHandle],
   );
 
-  return React.useMemo(() => ({
-    generateResponse,
-    generateStreamingResponse,
-    isLoaded: modelHandle !== undefined,
-  }), [generateResponse, generateStreamingResponse, modelHandle]);
+  return React.useMemo(
+    () => ({
+      generateResponse,
+      generateStreamingResponse,
+      isLoaded: modelHandle !== undefined,
+    }),
+    [generateResponse, generateStreamingResponse, modelHandle],
+  );
 }
-
 
 /**
  * Generate a streaming text response from the LLM.
@@ -443,8 +617,11 @@ export function generateStreamingText(
   abortSignal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (!modelHandle && modelHandle !== 0) { // modelHandle can be 0
-      reject(new Error("Invalid model handle provided to generateStreamingText."));
+    if (!modelHandle && modelHandle !== 0) {
+      // modelHandle can be 0
+      reject(
+        new Error("Invalid model handle provided to generateStreamingText."),
+      );
       return;
     }
 
@@ -484,18 +661,18 @@ export function generateStreamingText(
     );
 
     if (abortSignal) {
-      abortSignal.addEventListener('abort', () => {
+      abortSignal.addEventListener("abort", () => {
         // Check if subscriptions still exist before removing
         // This is a defensive check, as they might have been removed by completion/error
         try {
-            partialSubscription.remove();
+          partialSubscription.remove();
         } catch (subError) {
-            // console.warn("generateStreamingText: Error removing partialSubscription on abort:", subError);
+          // console.warn("generateStreamingText: Error removing partialSubscription on abort:", subError);
         }
         try {
-            errorSubscription.remove();
+          errorSubscription.remove();
         } catch (subError) {
-            // console.warn("generateStreamingText: Error removing errorSubscription on abort:", subError);
+          // console.warn("generateStreamingText: Error removing errorSubscription on abort:", subError);
         }
         console.log(`generateStreamingText Request ${requestId} aborted.`);
         reject(new Error("Aborted"));
@@ -517,7 +694,10 @@ export function generateStreamingText(
           partialSubscription.remove();
           errorSubscription.remove();
           if (onError) {
-            onError(error instanceof Error ? error.message : String(error), requestId);
+            onError(
+              error instanceof Error ? error.message : String(error),
+              requestId,
+            );
           }
           reject(error);
         }

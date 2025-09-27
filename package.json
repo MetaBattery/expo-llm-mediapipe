@@ -40,9 +40,9 @@
   "homepage": "https://github.com/tirthajyoti-ghosh/expo-llm-mediapipe#readme",
   "devDependencies": {
     "@types/react": "~18.3.12",
-    "expo": "~52.0.0",
-    "expo-module-scripts": "^4.0.3",
-    "react-native": "0.76.0"
+    "expo": "~54.0.0",
+    "expo-module-scripts": "^5.0.7",
+    "react-native": "0.76.6"
   },
   "peerDependencies": {
     "expo": "*",

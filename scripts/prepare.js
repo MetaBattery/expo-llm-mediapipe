@@ -9,9 +9,7 @@ const userAgent = process.env.npm_config_user_agent;
 const env = {
   ...process.env,
   EXPO_NONINTERACTIVE: '1',
-  npm_config_user_agent: userAgent?.includes('yarn')
-    ? userAgent
-    : ['yarn', userAgent].filter(Boolean).join(' '),
+  ...(userAgent ? { npm_config_user_agent: userAgent } : {}),
 };
 
 function runCommand(command, args, options = {}) {

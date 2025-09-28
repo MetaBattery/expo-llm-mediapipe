@@ -180,7 +180,7 @@ export class ModelManager {
 
       // Update status to error
       model.status = "error";
-      // model.error = error.message;
+      model.error = errorMessage;
       this.models.set(modelName, model);
       this.notifyListeners();
       throw error;

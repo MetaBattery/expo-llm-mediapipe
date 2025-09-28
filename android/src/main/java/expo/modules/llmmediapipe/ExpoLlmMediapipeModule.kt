@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val TAG = "ExpoLlmMediapipe"
 private const val DOWNLOAD_DIRECTORY = "llm_models"
+private const val NO_MODEL_HANDLE = -1
 
 class ExpoLlmMediapipeModule : Module() {
   private var nextHandle = 1
@@ -56,6 +57,7 @@ class ExpoLlmMediapipeModule : Module() {
     if (outputFile.exists()) {
       // The file already exists, no need to copy again
       sendEvent("logging", mapOf(
+        "handle" to NO_MODEL_HANDLE,
         "message" to "File already exists: ${outputFile.path}, size: ${outputFile.length()}"
       ))
       return outputFile
@@ -63,10 +65,12 @@ class ExpoLlmMediapipeModule : Module() {
 
     try {
       sendEvent("logging", mapOf(
+        "handle" to NO_MODEL_HANDLE,
         "message" to "Resolved asset path for $modelName"
       ))
 
       sendEvent("logging", mapOf(
+        "handle" to NO_MODEL_HANDLE,
         "message" to "Copying asset $modelName to ${outputFile.path}"
       ))
 
@@ -75,6 +79,7 @@ class ExpoLlmMediapipeModule : Module() {
         context.assets.open(modelName)
       } catch (e: Exception) {
         sendEvent("logging", mapOf(
+          "handle" to NO_MODEL_HANDLE,
           "message" to "Failed to open asset $modelName: ${e.message}"
         ))
         throw e
@@ -92,18 +97,21 @@ class ExpoLlmMediapipeModule : Module() {
 
             if (total % (1024 * 1024) == 0) { // Log every MB
               sendEvent("logging", mapOf(
+                "handle" to NO_MODEL_HANDLE,
                 "message" to "Copied $total bytes so far"
               ))
             }
           }
           
           sendEvent("logging", mapOf(
+            "handle" to NO_MODEL_HANDLE,
             "message" to "Copied $total bytes total"
           ))
         }
       }
     } catch (e: Exception) {
       sendEvent("logging", mapOf(
+        "handle" to NO_MODEL_HANDLE,
         "message" to "Error copying file: ${e.message}"
       ))
       throw e
@@ -181,6 +189,7 @@ class ExpoLlmMediapipeModule : Module() {
       } catch (e: Exception) {
         // Log the error
         sendEvent("logging", mapOf(
+          "handle" to NO_MODEL_HANDLE,
           "message" to "Model creation failed: ${e.message}"
         ))
         promise.reject("MODEL_CREATION_FAILED", e.message ?: "Unknown error", e)
@@ -191,12 +200,14 @@ class ExpoLlmMediapipeModule : Module() {
       try {
         // Log that we're creating a model from asset
         sendEvent("logging", mapOf(
+          "handle" to NO_MODEL_HANDLE,
           "message" to "Creating model from asset: $modelName"
         ))
         
         val modelPath = copyFileToInternalStorageIfNeeded(modelName, appContext.reactContext!!).path
         
         sendEvent("logging", mapOf(
+          "handle" to NO_MODEL_HANDLE,
           "message" to "Model file copied to: $modelPath"
         ))
         
@@ -215,6 +226,7 @@ class ExpoLlmMediapipeModule : Module() {
       } catch (e: Exception) {
         // Log the error
         sendEvent("logging", mapOf(
+          "handle" to NO_MODEL_HANDLE,
           "message" to "Model creation from asset failed: ${e.message}"
         ))
         promise.reject("MODEL_CREATION_FAILED", e.message ?: "Unknown error", e)

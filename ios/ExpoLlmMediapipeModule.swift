@@ -199,13 +199,22 @@ public class ExpoLlmMediapipeModule: Module {
         self.downloadObservers.removeValue(forKey: modelName)?.invalidate()
         
         if let error = error {
-          self.sendEvent("downloadProgress", [
-            "modelName": modelName,
-            "url": url,
-            "status": "error",
-            "error": error.localizedDescription
-          ])
-          promise.reject("ERR_DOWNLOAD", "Download failed: \(error.localizedDescription)")
+          if let urlError = error as? URLError, urlError.code == .cancelled {
+            self.sendEvent("downloadProgress", [
+              "modelName": modelName,
+              "url": url,
+              "status": "cancelled"
+            ])
+            promise.reject("ERR_DOWNLOAD_CANCELLED", "Download was cancelled")
+          } else {
+            self.sendEvent("downloadProgress", [
+              "modelName": modelName,
+              "url": url,
+              "status": "error",
+              "error": error.localizedDescription
+            ])
+            promise.reject("ERR_DOWNLOAD", "Download failed: \(error.localizedDescription)")
+          }
           return
         }
         

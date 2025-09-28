@@ -19,6 +19,15 @@ private const val TAG = "ExpoLlmMediapipe"
 private const val DOWNLOAD_DIRECTORY = "llm_models"
 private const val NO_MODEL_HANDLE = -1
 
+internal fun parseContentLength(headerValue: String?): Long? {
+  if (headerValue.isNullOrBlank()) {
+    return null
+  }
+
+  val sanitized = headerValue.trim().replace("_", "")
+  return sanitized.toLongOrNull()
+}
+
 internal suspend fun downloadWithTimeout(
   url: String,
   timeoutMillis: Long,
@@ -50,7 +59,9 @@ internal suspend fun downloadWithTimeout(
 
     withTimeout(timeoutMillis) {
       connection.connect()
-      totalBytes = connection.contentLengthLong
+      totalBytes = parseContentLength(connection.getHeaderField("Content-Length"))
+        ?: connection.contentLengthLong.takeIf { it >= 0 }
+        ?: -1L
 
       BufferedInputStream(connection.inputStream).use { input ->
         FileOutputStream(tempFile).use { output ->

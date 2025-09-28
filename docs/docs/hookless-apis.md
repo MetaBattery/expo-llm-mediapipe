@@ -206,7 +206,7 @@ await ExpoLlmMediapipe.cancelDownload('gemma-1.1-2b-it-int4.bin');
 
 ### **`isModelDownloaded`**
 
-Checks if a model is already downloaded.
+Checks if a model is already downloaded and that the downloaded file is non-empty.
 
 ##### **Parameters**
 

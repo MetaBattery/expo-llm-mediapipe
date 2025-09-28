@@ -129,8 +129,22 @@ public class ExpoLlmMediapipeModule: Module {
 
   private func isModelDownloaded(modelName: String, promise: Promise) {
     let modelURL = getModelURL(modelName: modelName)
-    let exists = FileManager.default.fileExists(atPath: modelURL.path)
-    promise.resolve(exists)
+    let fileManager = FileManager.default
+    guard fileManager.fileExists(atPath: modelURL.path) else {
+      promise.resolve(false)
+      return
+    }
+
+    do {
+      let attributes = try fileManager.attributesOfItem(atPath: modelURL.path)
+      if let fileSize = attributes[.size] as? NSNumber, fileSize.intValue > 0 {
+        promise.resolve(true)
+      } else {
+        promise.resolve(false)
+      }
+    } catch {
+      promise.resolve(false)
+    }
   }
 
   private func getDownloadedModels(promise: Promise) {

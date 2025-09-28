@@ -13,10 +13,74 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import java.io.IOException
 
 private const val TAG = "ExpoLlmMediapipe"
 private const val DOWNLOAD_DIRECTORY = "llm_models"
 private const val NO_MODEL_HANDLE = -1
+
+internal suspend fun downloadWithTimeout(
+  url: String,
+  timeoutMillis: Long,
+  headers: Map<String, Any>?,
+  tempFile: File,
+  isActive: () -> Boolean,
+  onProgress: (bytesDownloaded: Long, totalBytes: Long, progress: Double) -> Unit
+): Pair<Long, Long> {
+  var connection: HttpURLConnection? = null
+
+  try {
+    connection = (URL(url).openConnection() as HttpURLConnection).apply {
+      headers?.forEach { (key, value) ->
+        setRequestProperty(key, value.toString())
+      }
+
+      val timeoutInt = timeoutMillis.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+      connectTimeout = timeoutInt
+      readTimeout = timeoutInt
+    }
+
+    if (tempFile.exists()) {
+      tempFile.delete()
+    }
+
+    var bytesDownloaded = 0L
+    var totalBytes = -1L
+    var lastUpdateTime = System.currentTimeMillis()
+
+    withTimeout(timeoutMillis) {
+      connection.connect()
+      totalBytes = connection.contentLengthLong
+
+      BufferedInputStream(connection.inputStream).use { input ->
+        FileOutputStream(tempFile).use { output ->
+          val buffer = ByteArray(8192)
+          var count: Int
+
+          while (input.read(buffer).also { count = it } != -1) {
+            if (!isActive()) {
+              throw CancellationException("Download cancelled")
+            }
+
+            bytesDownloaded += count
+            output.write(buffer, 0, count)
+
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastUpdateTime > 100) {
+              lastUpdateTime = currentTime
+              val progress = if (totalBytes > 0) bytesDownloaded.toDouble() / totalBytes else 0.0
+              onProgress(bytesDownloaded, totalBytes, progress)
+            }
+          }
+        }
+      }
+    }
+
+    return bytesDownloaded to totalBytes
+  } finally {
+    connection?.disconnect()
+  }
+}
 
 class ExpoLlmMediapipeModule : Module() {
   private var nextHandle = 1
@@ -387,110 +451,115 @@ class ExpoLlmMediapipeModule : Module() {
       val promiseSettled = AtomicBoolean(false)
 
       val downloadJob = CoroutineScope(Dispatchers.IO).launch {
+        val timeoutMillis = (options?.get("timeout") as? Number)?.toLong() ?: 30_000L
+        val headers = options?.get("headers") as? Map<String, Any>
+        val tempFile = File(modelFile.absolutePath + ".temp")
+
         try {
-          val connection = URL(url).openConnection() as HttpURLConnection
-          
-          // Add custom headers if provided
-          (options?.get("headers") as? Map<String, Any>)?.let { headers ->
-            headers.forEach { (key, value) ->
-              connection.setRequestProperty(key, value.toString())
+          val (bytesDownloaded, totalBytes) = downloadWithTimeout(
+            url = url,
+            timeoutMillis = timeoutMillis,
+            headers = headers,
+            tempFile = tempFile,
+            isActive = { this.isActive },
+            onProgress = { downloaded, total, progress ->
+              sendEvent(
+                "downloadProgress",
+                mapOf(
+                  "modelName" to modelName,
+                  "url" to url,
+                  "bytesDownloaded" to downloaded,
+                  "totalBytes" to total,
+                  "progress" to progress,
+                  "status" to "downloading"
+                )
+              )
             }
-          }
-          
-          connection.connectTimeout = (options?.get("timeout") as? Number)?.toInt() ?: 30000
-          connection.connect()
-          
-          val contentLength = connection.contentLength.toLong()
-          val input = BufferedInputStream(connection.inputStream)
-          val tempFile = File(modelFile.absolutePath + ".temp")
-          val output = FileOutputStream(tempFile)
-          
-          val buffer = ByteArray(8192)
-          var total: Long = 0
-          var count: Int
-          var lastUpdateTime = System.currentTimeMillis()
-          
-          while (input.read(buffer).also { count = it } != -1) {
-            if (isActive.not()) {
-              // Download was cancelled
-              output.close()
-              input.close()
-              tempFile.delete()
-              sendEvent("downloadProgress", mapOf(
-                "modelName" to modelName,
-                "url" to url,
-                "status" to "cancelled"
-              ))
-              if (promiseSettled.compareAndSet(false, true)) {
-                withContext(Dispatchers.Main) {
-                  promise.reject(
-                    "ERR_DOWNLOAD_CANCELLED",
-                    "Download was cancelled"
-                  )
-                }
-              }
-              return@launch
-            }
-            
-            total += count
-            output.write(buffer, 0, count)
-            
-            // Send progress updates, throttled to avoid too many events
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastUpdateTime > 100) { // Every 100ms
-              lastUpdateTime = currentTime
-              val progress = if (contentLength > 0) total.toDouble() / contentLength.toDouble() else 0.0
-              sendEvent("downloadProgress", mapOf(
-                "modelName" to modelName,
-                "url" to url,
-                "bytesDownloaded" to total,
-                "totalBytes" to contentLength,
-                "progress" to progress,
-                "status" to "downloading"
-              ))
-            }
-          }
-          
-          // Close streams
-          output.flush()
-          output.close()
-          input.close()
-          
-          // Rename temp file to final file
+          )
+
           if (modelFile.exists()) {
             modelFile.delete()
           }
-          tempFile.renameTo(modelFile)
-          
-          // Notify completion
-          sendEvent("downloadProgress", mapOf(
-            "modelName" to modelName,
-            "url" to url,
-            "bytesDownloaded" to modelFile.length(),
-            "totalBytes" to modelFile.length(),
-            "progress" to 1.0,
-            "status" to "completed"
-          ))
+
+          if (!tempFile.renameTo(modelFile)) {
+            throw IOException("Failed to rename downloaded file")
+          }
+
+          sendEvent(
+            "downloadProgress",
+            mapOf(
+              "modelName" to modelName,
+              "url" to url,
+              "bytesDownloaded" to modelFile.length(),
+              "totalBytes" to if (totalBytes > 0) totalBytes else modelFile.length(),
+              "progress" to 1.0,
+              "status" to "completed"
+            )
+          )
 
           withContext(Dispatchers.Main) {
             if (promiseSettled.compareAndSet(false, true)) {
               promise.resolve(true)
             }
           }
+        } catch (e: TimeoutCancellationException) {
+          sendEvent(
+            "downloadProgress",
+            mapOf(
+              "modelName" to modelName,
+              "url" to url,
+              "status" to "timeout",
+              "error" to "Timed out after ${timeoutMillis}ms"
+            )
+          )
+
+          withContext(Dispatchers.Main) {
+            if (promiseSettled.compareAndSet(false, true)) {
+              promise.reject(
+                "ERR_DOWNLOAD_TIMEOUT",
+                "Download timed out after ${timeoutMillis}ms",
+                e
+              )
+            }
+          }
+        } catch (e: CancellationException) {
+          sendEvent(
+            "downloadProgress",
+            mapOf(
+              "modelName" to modelName,
+              "url" to url,
+              "status" to "cancelled"
+            )
+          )
+
+          withContext(Dispatchers.Main) {
+            if (promiseSettled.compareAndSet(false, true)) {
+              promise.reject("ERR_DOWNLOAD_CANCELLED", "Download was cancelled", e)
+            }
+          }
+
+          throw e
         } catch (e: Exception) {
           Log.e(TAG, "Error downloading model: ${e.message}", e)
-          sendEvent("downloadProgress", mapOf(
-            "modelName" to modelName,
-            "url" to url,
-            "status" to "error",
-            "error" to (e.message ?: "Unknown error")
-          ))
+          sendEvent(
+            "downloadProgress",
+            mapOf(
+              "modelName" to modelName,
+              "url" to url,
+              "status" to "error",
+              "error" to (e.message ?: "Unknown error")
+            )
+          )
+
           withContext(Dispatchers.Main) {
             if (promiseSettled.compareAndSet(false, true)) {
               promise.reject("ERR_DOWNLOAD", "Failed to download model: ${e.message}", e)
             }
           }
         } finally {
+          if (tempFile.exists()) {
+            tempFile.delete()
+          }
           activeDownloads.remove(modelName)
         }
       }

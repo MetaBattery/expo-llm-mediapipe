@@ -3,7 +3,10 @@ package expo.modules.llmmediapipe
 import java.io.File
 import java.net.ServerSocket
 import kotlin.concurrent.thread
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -64,5 +67,18 @@ class DownloadWithTimeoutTest {
         onProgress = { _, _, _ -> }
       )
     }
+  }
+
+  @Test
+  fun parseContentLengthHandlesLargeUnderscoredValues() {
+    val totalBytes = parseContentLength("3_200_000_000")
+
+    assertNotNull(totalBytes)
+    assertEquals(3_200_000_000L, totalBytes)
+
+    val bytesDownloaded = 1_600_000_000L
+    val progress = if (totalBytes > 0) bytesDownloaded.toDouble() / totalBytes else 0.0
+
+    assertTrue(progress > 0.0, "Progress should be greater than zero for partial download")
   }
 }

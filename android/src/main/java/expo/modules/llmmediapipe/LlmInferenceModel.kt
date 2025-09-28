@@ -42,11 +42,12 @@ class LlmInferenceModel(
         val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
             .setTemperature(temperature)
             .setTopK(topK)
+            .setRandomSeed(randomSeed)
             .build()
 
         try {
             llmInferenceSession = LlmInferenceSession.createFromOptions(llmInference, sessionOptions)
-            inferenceListener?.logging(this, "LLM inference session created successfully")
+            inferenceListener?.logging(this, "LLM inference session created successfully with random seed: $randomSeed")
         } catch (e: Exception) {
             inferenceListener?.logging(this, "Error creating LLM inference session: ${e.message}")
             llmInference.close()
@@ -69,8 +70,9 @@ class LlmInferenceModel(
             val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
                 .setTemperature(temperature)
                 .setTopK(topK)
+                .setRandomSeed(randomSeed)
                 .build()
-                
+
             llmInferenceSession = LlmInferenceSession.createFromOptions(llmInference, sessionOptions)
             
             // Add the prompt to the session
@@ -112,6 +114,7 @@ class LlmInferenceModel(
             val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
                 .setTemperature(temperature)
                 .setTopK(topK)
+                .setRandomSeed(randomSeed)
                 .build()
                 
             llmInferenceSession = LlmInferenceSession.createFromOptions(llmInference, sessionOptions)

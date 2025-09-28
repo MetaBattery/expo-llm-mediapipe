@@ -103,6 +103,11 @@ function useDownloadableLLM(
         } else if (event.status === "error") {
           setDownloadStatus("error");
           setDownloadError(event.error || "Unknown error occurred");
+          setDownloadProgress(0);
+        } else if (event.status === "timeout") {
+          setDownloadStatus("error");
+          setDownloadError(event.error || "Download timed out");
+          setDownloadProgress(0);
         } else if (event.status === "cancelled") {
           setDownloadStatus("not_downloaded");
           setDownloadProgress(0);

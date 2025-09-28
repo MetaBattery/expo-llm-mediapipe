@@ -62,32 +62,34 @@ class ExpoLlmMediapipeModule : Module() {
     }
 
     try {
-      val assetList = context.assets.list("") ?: arrayOf()
       sendEvent("logging", mapOf(
-        "message" to "Available assets: ${assetList.joinToString()}"
+        "message" to "Resolved asset path for $modelName"
       ))
-      
-      if (!assetList.contains(modelName)) {
-        val errorMsg = "Asset file $modelName does not exist in assets"
-        sendEvent("logging", mapOf("message" to errorMsg))
-        throw IllegalArgumentException(errorMsg)
-      }
 
       sendEvent("logging", mapOf(
         "message" to "Copying asset $modelName to ${outputFile.path}"
       ))
-      
+
       // File doesn't exist, proceed with copying
-      context.assets.open(modelName).use { inputStream ->
-        FileOutputStream(outputFile).use { outputStream -> 
+      val inputStream = try {
+        context.assets.open(modelName)
+      } catch (e: Exception) {
+        sendEvent("logging", mapOf(
+          "message" to "Failed to open asset $modelName: ${e.message}"
+        ))
+        throw e
+      }
+
+      inputStream.use { input ->
+        FileOutputStream(outputFile).use { outputStream ->
           val buffer = ByteArray(1024)
           var read: Int
           var total = 0
-          
-          while (inputStream.read(buffer).also { read = it } != -1) {
+
+          while (input.read(buffer).also { read = it } != -1) {
             outputStream.write(buffer, 0, read)
             total += read
-            
+
             if (total % (1024 * 1024) == 0) { // Log every MB
               sendEvent("logging", mapOf(
                 "message" to "Copied $total bytes so far"

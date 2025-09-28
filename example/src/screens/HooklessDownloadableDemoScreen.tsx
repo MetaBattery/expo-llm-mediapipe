@@ -83,6 +83,15 @@ const HooklessDownloadableDemoScreen = () => {
             setDownloadStatus("error");
             setDownloadError(event.error || "Unknown download error");
             setError(`Download Error: ${event.error}`);
+            setDownloadProgress(0);
+            setIsLoadingAction(false); // Stop loading indicator
+          } else if (event.status === "timeout") {
+            const message = event.error || "Download timed out";
+            setDownloadStatus("error");
+            setDownloadError(message);
+            setError(`Download Timeout: ${message}`);
+            setDownloadProgress(0);
+            Alert.alert("Download Timeout", message);
             setIsLoadingAction(false); // Stop loading indicator
           } else if (event.status === "cancelled") {
             setDownloadStatus("not_downloaded");

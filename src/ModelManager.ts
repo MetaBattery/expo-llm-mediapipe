@@ -43,7 +43,7 @@ export class ModelManager {
       model.status =
         status === "completed"
           ? "downloaded"
-          : status === "error"
+          : status === "error" || status === "timeout"
             ? "error"
             : status === "downloading"
               ? "downloading"
@@ -53,14 +53,18 @@ export class ModelManager {
         model.progress = progress;
       }
 
-      if (status === "error") {
+      if (status === "error" || status === "timeout") {
         model.error = error ?? model.error;
+        model.progress = 0;
       } else if (
         status === "downloading" ||
         status === "completed" ||
         status === "cancelled"
       ) {
         model.error = undefined;
+        if (status === "cancelled") {
+          model.progress = 0;
+        }
       }
 
       // Save updated model info
@@ -140,7 +144,8 @@ export class ModelManager {
       );
       if (result) {
         try {
-          const isDownloaded = await ExpoLlmMediapipe.isModelDownloaded(modelName);
+          const isDownloaded =
+            await ExpoLlmMediapipe.isModelDownloaded(modelName);
           if (isDownloaded) {
             model.status = "downloaded";
             model.progress = 1;

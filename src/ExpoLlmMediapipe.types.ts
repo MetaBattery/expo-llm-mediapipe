@@ -49,7 +49,7 @@ export interface DownloadProgressEvent {
   bytesDownloaded?: number;
   totalBytes?: number;
   progress?: number;
-  status: "downloading" | "completed" | "error" | "cancelled";
+  status: "downloading" | "completed" | "error" | "cancelled" | "timeout";
   error?: string;
 }
 

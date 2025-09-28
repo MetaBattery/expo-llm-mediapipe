@@ -46,6 +46,11 @@ const HooklessUtilityDemoScreen = () => {
               fetchDownloadedModels(); // Refresh list
             } else if (event.status === "error") {
               setLastMessage(`Error downloading ${UTILITY_MODEL_NAME}: ${event.error}`);
+              setDownloadProgress(0);
+            } else if (event.status === "timeout") {
+              const message = event.error || "Download timed out.";
+              setLastMessage(`Timeout downloading ${UTILITY_MODEL_NAME}: ${message}`);
+              setDownloadProgress(0);
             } else if (event.status === "cancelled") {
               setLastMessage(`Download of ${UTILITY_MODEL_NAME} cancelled.`);
               setDownloadProgress(0);

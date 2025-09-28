@@ -211,7 +211,7 @@ public class ExpoLlmMediapipeModule: Module {
         // Remove from active downloads
         self.activeDownloads.removeValue(forKey: modelName)
         self.downloadObservers.removeValue(forKey: modelName)?.invalidate()
-        
+
         if let error = error {
           if let urlError = error as? URLError, urlError.code == .cancelled {
             self.sendEvent("downloadProgress", [
@@ -242,7 +242,31 @@ public class ExpoLlmMediapipeModule: Module {
           promise.reject("ERR_DOWNLOAD", "Download failed: No file received")
           return
         }
-        
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+          try? FileManager.default.removeItem(at: tempURL)
+          self.sendEvent("downloadProgress", [
+            "modelName": modelName,
+            "url": url,
+            "status": "error",
+            "error": "Invalid response"
+          ])
+          promise.reject("ERR_DOWNLOAD_RESPONSE", "Download failed: Invalid response")
+          return
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+          try? FileManager.default.removeItem(at: tempURL)
+          self.sendEvent("downloadProgress", [
+            "modelName": modelName,
+            "url": url,
+            "status": "error",
+            "statusCode": httpResponse.statusCode
+          ])
+          promise.reject("ERR_DOWNLOAD_HTTP_STATUS", "Download failed with HTTP status code \(httpResponse.statusCode)")
+          return
+        }
+
         do {
           // If file already exists, remove it
           if FileManager.default.fileExists(atPath: modelURL.path) {

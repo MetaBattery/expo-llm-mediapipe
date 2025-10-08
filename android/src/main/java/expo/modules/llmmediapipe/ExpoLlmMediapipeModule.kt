@@ -59,8 +59,12 @@ internal suspend fun downloadWithTimeout(
 
     withTimeout(timeoutMillis) {
       connection.connect()
-      totalBytes = parseContentLength(connection.getHeaderField("Content-Length"))
-        ?: connection.contentLengthLong.takeIf { it >= 0 }
+      val headerContentLength = parseContentLength(connection.getHeaderField("Content-Length"))
+      val contentLengthLong = connection.contentLengthLong.takeIf { it >= 0 }
+      val fallbackContentLength = connection.contentLength.takeIf { it >= 0 }?.toLong()
+      totalBytes = headerContentLength
+        ?: contentLengthLong
+        ?: fallbackContentLength
         ?: -1L
 
       BufferedInputStream(connection.inputStream).use { input ->
@@ -73,14 +77,24 @@ internal suspend fun downloadWithTimeout(
               throw CancellationException("Download cancelled")
             }
 
-            bytesDownloaded += count
+            val countLong = count.toLong()
+            bytesDownloaded = if (Long.MAX_VALUE - bytesDownloaded < countLong) {
+              Long.MAX_VALUE
+            } else {
+              bytesDownloaded + countLong
+            }
             output.write(buffer, 0, count)
 
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastUpdateTime > 100) {
               lastUpdateTime = currentTime
               val progress = if (totalBytes > 0) bytesDownloaded.toDouble() / totalBytes else 0.0
-              onProgress(bytesDownloaded, totalBytes, progress)
+              val reportedTotalBytes = when {
+                totalBytes > 0 -> totalBytes
+                bytesDownloaded > 0 -> bytesDownloaded
+                else -> 0L
+              }
+              onProgress(bytesDownloaded, reportedTotalBytes, progress)
             }
           }
         }

@@ -17,6 +17,15 @@ import type {
 
 const module = requireNativeModule<NativeModuleType>("ExpoLlmMediapipe");
 
+const MAX_REQUEST_ID = Number.MAX_SAFE_INTEGER;
+let nextRequestId = 0;
+
+const allocateRequestId = (): number => {
+  const requestId = nextRequestId;
+  nextRequestId = nextRequestId >= MAX_REQUEST_ID ? 0 : nextRequestId + 1;
+  return requestId;
+};
+
 // Hook Overloads
 export function useLLM(props: UseLLMDownloadableProps): DownloadableLlmReturn;
 export function useLLM(props: UseLLMAssetProps): BaseLlmReturn;
@@ -54,7 +63,6 @@ function useDownloadableLLM(
   props: UseLLMDownloadableProps,
 ): DownloadableLlmReturn {
   const [modelHandle, setModelHandle] = React.useState<number | undefined>();
-  const nextRequestIdRef = React.useRef(0);
 
   const [downloadStatus, setDownloadStatus] = React.useState<
     "not_downloaded" | "downloading" | "downloaded" | "error"
@@ -143,7 +151,9 @@ function useDownloadableLLM(
     async (options?: DownloadOptions): Promise<boolean> => {
       try {
         setDownloadStatus("downloading");
-        setDownloadProgress(0);
+        if (downloadStatus !== "downloading") {
+          setDownloadProgress(0);
+        }
         setDownloadError(null);
         const result = await module.downloadModel(modelUrl, modelName, options);
         if (result) {
@@ -177,12 +187,22 @@ function useDownloadableLLM(
           return false;
         }
 
+        const isAlreadyDownloading =
+          errorCode === "ERR_ALREADY_DOWNLOADING" ||
+          errorMessage.toLowerCase().includes("already downloading");
+
+        if (isAlreadyDownloading) {
+          setDownloadStatus("downloading");
+          setDownloadError(null);
+          return true;
+        }
+
         setDownloadStatus("error");
         setDownloadError(errorMessage);
         throw error;
       }
     },
-    [modelUrl, modelName],
+    [modelUrl, modelName, downloadStatus],
   );
 
   const loadModelHandler = React.useCallback(async (): Promise<void> => {
@@ -233,7 +253,7 @@ function useDownloadableLLM(
       if (modelHandle === undefined) {
         throw new Error("Model is not loaded. Call loadModel() first.");
       }
-      const requestId = nextRequestIdRef.current++;
+      const requestId = allocateRequestId();
 
       const partialSub = module.addListener(
         "onPartialResponse",
@@ -292,7 +312,7 @@ function useDownloadableLLM(
       if (modelHandle === undefined) {
         throw new Error("Model is not loaded. Call loadModel() first.");
       }
-      const requestId = nextRequestIdRef.current++;
+      const requestId = allocateRequestId();
 
       return new Promise<void>((resolve, reject) => {
         const partialSubscription = module.addListener(
@@ -388,7 +408,6 @@ function useDownloadableLLM(
 // Internal implementation for Asset/File models
 function useBaseLLM(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
   const [modelHandle, setModelHandle] = React.useState<number | undefined>();
-  const nextRequestIdRef = React.useRef(0);
 
   const { maxTokens, topK, temperature, randomSeed } = props;
   let modelIdentifier: string | undefined;
@@ -498,7 +517,7 @@ function useBaseLLM(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
           "Model handle is not defined. Ensure model is created/loaded.",
         );
       }
-      const requestId = nextRequestIdRef.current++;
+      const requestId = allocateRequestId();
 
       const partialSub = module.addListener(
         "onPartialResponse",
@@ -559,7 +578,7 @@ function useBaseLLM(props: UseLLMAssetProps | UseLLMFileProps): BaseLlmReturn {
           "Model handle is not defined. Ensure model is created/loaded.",
         );
       }
-      const requestId = nextRequestIdRef.current++;
+      const requestId = allocateRequestId();
 
       return new Promise<void>((resolve, reject) => {
         const partialSubscription = module.addListener(
@@ -656,7 +675,7 @@ export function generateStreamingText(
       return;
     }
 
-    const requestId = Math.floor(Math.random() * 1000000); // Increased range for uniqueness
+    const requestId = allocateRequestId();
 
     const partialSubscription = module.addListener(
       "onPartialResponse",

@@ -125,8 +125,11 @@ export class ModelManager {
 
     try {
       // Update status to downloading
-      model.status = "downloading";
-      model.progress = 0;
+      if (model.status !== "downloading") {
+        model.status = "downloading";
+        model.progress = 0;
+      }
+      model.error = undefined;
       this.models.set(modelName, model);
       this.notifyListeners();
 
@@ -178,6 +181,18 @@ export class ModelManager {
         return false;
       }
 
+      const isAlreadyDownloading =
+        errorCode === "ERR_ALREADY_DOWNLOADING" ||
+        errorMessage.toLowerCase().includes("already downloading");
+
+      if (isAlreadyDownloading) {
+        model.status = "downloading";
+        model.error = undefined;
+        this.models.set(modelName, model);
+        this.notifyListeners();
+        return true;
+      }
+
       // Update status to error
       model.status = "error";
       model.error = errorMessage;
@@ -203,15 +218,19 @@ export class ModelManager {
    */
   public async deleteModel(modelName: string): Promise<boolean> {
     const result = await ExpoLlmMediapipe.deleteDownloadedModel(modelName);
-    if (result) {
-      const model = this.models.get(modelName);
-      if (model) {
-        model.status = "not_downloaded";
-        model.progress = undefined;
-        this.models.set(modelName, model);
-        this.notifyListeners();
-      }
+    const model = this.models.get(modelName);
+
+    if (!model) {
+      return result;
     }
+
+    model.status = "not_downloaded";
+    model.progress = undefined;
+    model.error = undefined;
+
+    this.models.set(modelName, model);
+    this.notifyListeners();
+
     return result;
   }
 
